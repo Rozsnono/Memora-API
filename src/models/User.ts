@@ -7,6 +7,7 @@ const UserSchema = new Schema({
     password: { type: String, required: true }, // Hashed password
     avatar: String,
     mode: { type: String, enum: ['personal', 'couple', 'family'], default: 'personal' },
+    role: { type: String, enum: ['user', 'admin'], default: 'user' },
     spaces: [{ type: Schema.Types.ObjectId, ref: 'Space' }],
     // Track which space is currently being viewed
     activeSpace: { type: Schema.Types.ObjectId, ref: 'Space' }

@@ -1,0 +1,11 @@
+@import "tailwindcss";
+
+@theme {
+  --color-memora-background: #FDFCFB;
+  --color-memora-primary: #9B86BD;
+  --color-memora-secondary: #d192cd;
+  --color-memora-soft: #F3E5F5;
+  --color-memora-accent: #FFD1DC;
+  --color-memora-mint: #E0F2F1;
+  --color-memora-clay: #4A4E69;
+}

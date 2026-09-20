@@ -46,6 +46,9 @@ export async function PATCH(req: Request) {
 
         const authHeader = req.headers.get('authorization');
         const token = authHeader?.split(' ')[1];
+        if (!token) {
+            return NextResponse.json({ message: 'Unauthorized' }, { status: 401 });
+        }
         const decoded: any = jwt.verify(token, process.env.JWT_SECRET || 'secret');
 
         // Dynamically build the update object

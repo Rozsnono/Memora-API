@@ -14,7 +14,8 @@ import {
     ChevronLeft,
     ShieldCheck,
     LogOut,
-    Check
+    Check,
+    AlertTriangle
 } from 'lucide-react';
 import apiClient from '@/lib/apiClient';
 import { useRouter } from 'next/navigation';
@@ -43,6 +44,7 @@ export default function AdminDashboard() {
     const [systemData, setSystemData] = useState<any>(null);
 
     const [loading, setLoading] = useState<boolean>(true);
+    const [fetchError, setFetchError] = useState<string | null>(null);
     const [selectedUserForReset, setSelectedUserForReset] = useState<any | null>(null);
     const [selectedMemoryForLightbox, setSelectedMemoryForLightbox] = useState<any | null>(null);
     const [toastMessage, setToastMessage] = useState<string | null>(null);
@@ -57,8 +59,11 @@ export default function AdminDashboard() {
         try {
             const { data } = await apiClient.get('/api/admin/overview');
             setOverviewData(data);
-        } catch (err) {
+            return true;
+        } catch (err: any) {
             console.error('Failed fetching overview:', err);
+            setFetchError(err?.response?.data?.error || err?.message || 'Nem sikerült betölteni az áttekintést');
+            return false;
         }
     }, []);
 
@@ -66,8 +71,10 @@ export default function AdminDashboard() {
         try {
             const { data } = await apiClient.get('/api/admin/users');
             setUsers(data.users || []);
-        } catch (err) {
+            return true;
+        } catch (err: any) {
             console.error('Failed fetching users:', err);
+            return false;
         }
     }, []);
 
@@ -75,8 +82,10 @@ export default function AdminDashboard() {
         try {
             const { data } = await apiClient.get('/api/admin/spaces');
             setSpaces(data.spaces || []);
-        } catch (err) {
+            return true;
+        } catch (err: any) {
             console.error('Failed fetching spaces:', err);
+            return false;
         }
     }, []);
 
@@ -84,8 +93,10 @@ export default function AdminDashboard() {
         try {
             const { data } = await apiClient.get('/api/admin/memories');
             setMemories(data.memories || []);
-        } catch (err) {
+            return true;
+        } catch (err: any) {
             console.error('Failed fetching memories:', err);
+            return false;
         }
     }, []);
 
@@ -93,8 +104,10 @@ export default function AdminDashboard() {
         try {
             const { data } = await apiClient.get('/api/admin/games');
             setGames(data || { chess: [], hangman: [], lobbies: [] });
-        } catch (err) {
+            return true;
+        } catch (err: any) {
             console.error('Failed fetching games:', err);
+            return false;
         }
     }, []);
 
@@ -102,8 +115,10 @@ export default function AdminDashboard() {
         try {
             const { data } = await apiClient.get('/api/logs?limit=150');
             setLogs(data || []);
-        } catch (err) {
+            return true;
+        } catch (err: any) {
             console.error('Failed fetching logs:', err);
+            return false;
         }
     }, []);
 
@@ -111,16 +126,18 @@ export default function AdminDashboard() {
         try {
             const { data } = await apiClient.get('/api/admin/system');
             setSystemData(data);
-        } catch (err) {
+            return true;
+        } catch (err: any) {
             console.error('Failed fetching system:', err);
+            return false;
         }
     }, []);
 
-    // Initial load
-    useEffect(() => {
-        const init = async () => {
-            setLoading(true);
-            await Promise.all([
+    const loadAllData = useCallback(async () => {
+        setLoading(true);
+        setFetchError(null);
+        try {
+            const results = await Promise.all([
                 fetchOverview(),
                 fetchUsers(),
                 fetchSpaces(),
@@ -129,13 +146,25 @@ export default function AdminDashboard() {
                 fetchLogs(),
                 fetchSystem()
             ]);
+            const someSuccess = results.some(r => r === true);
+            if (!someSuccess) {
+                setFetchError('Nem sikerült kapcsolatot létesíteni az adminisztrációs API-val. Ellenőrizd a hálózati kapcsolatot vagy a beállításokat.');
+            }
+        } catch (err: any) {
+            setFetchError(err?.message || 'Ismeretlen hiba történt a betöltés során');
+        } finally {
             setLoading(false);
-        };
-        init();
+        }
     }, [fetchOverview, fetchUsers, fetchSpaces, fetchMemories, fetchGames, fetchLogs, fetchSystem]);
+
+    // Initial load
+    useEffect(() => {
+        loadAllData();
+    }, [loadAllData]);
 
     // Active tab refresher
     const handleActiveTabRefresh = () => {
+        setFetchError(null);
         if (activeTab === 'overview') fetchOverview();
         else if (activeTab === 'users') fetchUsers();
         else if (activeTab === 'spaces') fetchSpaces();
@@ -247,6 +276,27 @@ export default function AdminDashboard() {
                     <div className="fixed bottom-6 right-6 z-50 p-4 bg-emerald-500/15 border border-emerald-500/30 text-emerald-300 text-xs font-semibold rounded-2xl shadow-xl flex items-center gap-2 backdrop-blur-xl animate-fade-in">
                         <Check size={16} />
                         <span>{toastMessage}</span>
+                    </div>
+                )}
+
+                {/* API Error Notification */}
+                {fetchError && (
+                    <div className="mb-6 p-4 bg-rose-500/10 border border-rose-500/30 rounded-2xl flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 text-rose-300">
+                        <div className="flex items-center gap-3">
+                            <div className="p-2 rounded-xl bg-rose-500/20 text-rose-400 shrink-0">
+                                <AlertTriangle size={18} />
+                            </div>
+                            <div>
+                                <p className="text-sm font-semibold text-rose-200">Adatbetöltési figyelmeztetés</p>
+                                <p className="text-xs text-rose-300/80">{fetchError}</p>
+                            </div>
+                        </div>
+                        <button
+                            onClick={loadAllData}
+                            className="px-3.5 py-1.5 bg-rose-500/20 hover:bg-rose-500/30 border border-rose-500/30 text-rose-200 rounded-xl text-xs font-semibold transition-colors shrink-0"
+                        >
+                            Újrapróbálás
+                        </button>
                     </div>
                 )}
 

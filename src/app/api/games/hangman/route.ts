@@ -16,8 +16,12 @@ export async function POST(req: Request) {
         const body = await req.json(); // { spaceId, creatorId, creatorName, word, category }
         const game = await Hangman.create(body);
 
-        // Notify family via Pusher
-        await pusherServer.trigger(body.spaceId, 'new-game', { type: 'hangman', gameId: game._id });
+        // Notify family via Pusher (safely handled if Pusher is not configured)
+        try {
+            await pusherServer.trigger(body.spaceId, 'new-game', { type: 'hangman', gameId: game._id });
+        } catch (pusherErr) {
+            console.warn("Pusher notification skipped/failed:", pusherErr);
+        }
 
         return corsResponse(NextResponse.json(game), req);
     } catch (e: any) {
@@ -30,6 +34,10 @@ export async function PATCH(req: Request) {
         await connectDB();
         const { gameId, letter } = await req.json();
         const game = await Hangman.findById(gameId);
+
+        if (!game) {
+            return corsResponse(NextResponse.json({ error: "Game not found" }, { status: 404 }), req);
+        }
 
         if (!game.guessedLetters.includes(letter)) {
             game.guessedLetters.push(letter);
@@ -45,7 +53,12 @@ export async function PATCH(req: Request) {
         else game.status = 'playing';
 
         await game.save();
-        await pusherServer.trigger(game.spaceId, 'game-update', game);
+
+        try {
+            await pusherServer.trigger(game.spaceId, 'game-update', game);
+        } catch (pusherErr) {
+            console.warn("Pusher update skipped/failed:", pusherErr);
+        }
 
         if (game.status === 'won' || game.status === 'lost') {
             await Hangman.deleteMany({ spaceId: game.spaceId });

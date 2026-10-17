@@ -15,6 +15,17 @@ export async function GET(req: Request) {
         await connectDB();
         const { searchParams } = new URL(req.url);
         const spaceId = searchParams.get('spaceId');
+        const gameId = searchParams.get('gameId');
+
+        // Egy parti lekérdezése (polling / újratöltés)
+        if (gameId) {
+            const one = await ChessGame.findById(gameId);
+            if (!one) return corsResponse(NextResponse.json({ error: 'A parti nem található.' }, { status: 404 }), req);
+            return corsResponse(NextResponse.json(one), req);
+        }
+        if (!spaceId) {
+            return corsResponse(NextResponse.json({ error: 'Hiányzó spaceId.' }, { status: 400 }), req);
+        }
 
         const games = await ChessGame.find({
             spaceId,
@@ -23,7 +34,8 @@ export async function GET(req: Request) {
 
         return corsResponse(NextResponse.json(games), req);
     } catch (e: any) {
-        return corsResponse(NextResponse.json({ error: e.message }, { status: 500 }), req);
+        console.error('Chess route hiba:', e);
+        return corsResponse(NextResponse.json({ error: 'Szerverhiba.' }, { status: 500 }), req);
     }
 }
 
@@ -33,6 +45,9 @@ export async function POST(req: Request) {
     try {
         await connectDB();
         const { spaceId, userId, userName, side } = await req.json();
+        if (!spaceId || !userId || !userName || (side !== 'white' && side !== 'black')) {
+            return corsResponse(NextResponse.json({ error: 'Hiányzó vagy hibás adatok (spaceId, userId, userName, side).' }, { status: 400 }), req);
+        }
 
         const gameData: any = {
             spaceId,
@@ -45,14 +60,19 @@ export async function POST(req: Request) {
         const game = await ChessGame.create(gameData);
 
         // Broadcast to Lounge so others see the "Live Table"
-        await pusherServer.trigger(spaceId, 'new-game', {
-            type: 'chess',
-            gameId: game._id,
-            hostName: userName
-        });
+        try {
+            await pusherServer.trigger(spaceId, 'new-game', {
+                type: 'chess',
+                gameId: game._id,
+                hostName: userName
+            });
+        } catch (pushErr) {
+            console.error('Chess pusher hiba:', pushErr);
+        }
 
         return corsResponse(NextResponse.json(game), req);
     } catch (e: any) {
-        return corsResponse(NextResponse.json({ error: e.message }, { status: 500 }), req);
+        console.error('Chess route hiba:', e);
+        return corsResponse(NextResponse.json({ error: 'Szerverhiba.' }, { status: 500 }), req);
     }
 }

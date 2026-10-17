@@ -8,36 +8,56 @@ export const dynamic = 'force-dynamic';
 
 export async function OPTIONS(request: Request) { return handleOptions(request); }
 
+/**
+ * PATCH: csatlakozás egy partihoz. A válasz mindig a játék dokumentuma;
+ * ha nincs szabad hely, `spectator: true` jelzi a nézői módot (nem hiba).
+ */
 export async function PATCH(req: Request) {
     try {
         await connectDB();
-        const { gameId, userId, userName, spaceId } = await req.json();
+        const { gameId, userId, userName } = await req.json();
+        if (!gameId || !userId) {
+            return corsResponse(NextResponse.json({ error: 'Hiányzó gameId vagy userId.' }, { status: 400 }), req);
+        }
         const game = await ChessGame.findById(gameId);
+        if (!game) return corsResponse(NextResponse.json({ error: 'A parti nem található.' }, { status: 404 }), req);
 
-        if (!game) return corsResponse(NextResponse.json({ error: "Game not found" }, { status: 404 }), req);
-
-        // If user is already a player, just return the game
-        if (game.whitePlayer?.id === userId || game.blackPlayer?.id === userId) {
+        const uid = userId.toString();
+        // Már játékos: csak visszaadjuk
+        if (game.whitePlayer?.id?.toString() === uid || game.blackPlayer?.id?.toString() === uid) {
             return corsResponse(NextResponse.json(game), req);
         }
-
-        // Assign to the empty seat
-        if (!game.whitePlayer?.id) {
-            game.whitePlayer = { id: userId, name: userName };
-        } else if (!game.blackPlayer?.id) {
-            game.blackPlayer = { id: userId, name: userName };
-        } else {
-            return corsResponse(NextResponse.json({ error: "Game is full (Spectating only)" }, { status: 200 }), req);
+        // Befejezett parti: csak megtekinthető
+        if (game.status === 'won' || game.status === 'draw') {
+            return corsResponse(NextResponse.json({ ...game.toObject(), spectator: true }), req);
         }
 
-        game.status = 'playing';
-        await game.save();
+        // Atomikus ülésfoglalás: két egyidejű csatlakozó nem kaphatja ugyanazt a helyet
+        const seat = { id: uid, name: userName || 'Családtag' };
+        let updated = await ChessGame.findOneAndUpdate(
+            { _id: gameId, 'whitePlayer.id': null },
+            { whitePlayer: seat, status: game.blackPlayer?.id ? 'playing' : 'waiting' },
+            { new: true }
+        );
+        if (!updated) {
+            updated = await ChessGame.findOneAndUpdate(
+                { _id: gameId, 'blackPlayer.id': null },
+                { blackPlayer: seat, status: game.whitePlayer?.id ? 'playing' : 'waiting' },
+                { new: true }
+            );
+        }
+        if (!updated) {
+            return corsResponse(NextResponse.json({ ...game.toObject(), spectator: true }), req);
+        }
 
-        // Notify the host that someone sat down
-        await pusherServer.trigger(spaceId, 'chess-join', game);
-
-        return corsResponse(NextResponse.json(game), req);
+        try {
+            await pusherServer.trigger(updated.spaceId, 'chess-join', updated);
+        } catch (pushErr) {
+            console.error('Chess pusher hiba:', pushErr);
+        }
+        return corsResponse(NextResponse.json(updated), req);
     } catch (e: any) {
-        return corsResponse(NextResponse.json({ error: e.message }, { status: 500 }), req);
+        console.error('Chess join hiba:', e);
+        return corsResponse(NextResponse.json({ error: 'Szerverhiba a csatlakozáskor.' }, { status: 500 }), req);
     }
 }

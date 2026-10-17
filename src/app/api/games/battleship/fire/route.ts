@@ -3,6 +3,7 @@ import connectDB from '@/lib/mongodb';
 import { BattleshipGame } from '@/models/BattleshipGame';
 import { Memory } from '@/models/Memory';
 import { pusherServer } from '@/lib/pusher';
+import { sanitizeGame, gameBoardSize } from '@/lib/battleship';
 import { corsResponse, handleOptions } from '@/lib/cors';
 
 export const dynamic = 'force-dynamic';
@@ -27,6 +28,12 @@ export async function POST(req: Request) {
 
         if (game.turn !== userId) {
             return corsResponse(NextResponse.json({ error: 'Not your turn' }, { status: 403 }), req);
+        }
+
+        const size = gameBoardSize(game);
+        if (!Number.isInteger(r) || !Number.isInteger(c) ||
+            r < 0 || r >= size || c < 0 || c >= size) {
+            return corsResponse(NextResponse.json({ error: 'Invalid coordinate' }, { status: 400 }), req);
         }
 
         const isP1 = game.player1.id === userId;
@@ -134,8 +141,8 @@ export async function POST(req: Request) {
         }
 
         return corsResponse(NextResponse.json({
-            game,
-            shot: { r, c, result: shotResult, ship: hitShip },
+            game: sanitizeGame(game, userId),
+            shot: { r, c, result: shotResult, ship: shotResult === 'sunk' ? hitShip : null },
             unlockedMemory: newlyUnlockedMemory,
         }), req);
     } catch (e: any) {
@@ -145,10 +152,11 @@ export async function POST(req: Request) {
 
 // Smart AI counter-attack loop
 function executeAiTurns(game: any) {
+    const size = gameBoardSize(game);
     let aiContinuing = true;
     let guardCounter = 0;
 
-    while (aiContinuing && guardCounter < 10) {
+    while (aiContinuing && guardCounter < size * size) {
         guardCounter++;
         const targetShips = game.player1.ships;
         const aiShots = game.player2Shots;
@@ -180,7 +188,7 @@ function executeAiTurns(game: any) {
                 for (const d of directions) {
                     const nr = hit.r + d.dr;
                     const nc = hit.c + d.dc;
-                    if (nr >= 0 && nr < 8 && nc >= 0 && nc < 8) {
+                    if (nr >= 0 && nr < size && nc >= 0 && nc < size) {
                         const alreadyShot = aiShots.some((s: any) => s.r === nr && s.c === nc);
                         if (!alreadyShot) {
                             chosenR = nr;
@@ -196,8 +204,8 @@ function executeAiTurns(game: any) {
         // If no candidate found from hits, pick random unvisited cell
         if (chosenR === -1) {
             const availableCells: { r: number; c: number }[] = [];
-            for (let r = 0; r < 8; r++) {
-                for (let c = 0; c < 8; c++) {
+            for (let r = 0; r < size; r++) {
+                for (let c = 0; c < size; c++) {
                     const alreadyShot = aiShots.some((s: any) => s.r === r && s.c === c);
                     if (!alreadyShot) {
                         availableCells.push({ r, c });

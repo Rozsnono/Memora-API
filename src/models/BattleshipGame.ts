@@ -36,6 +36,8 @@ const BattleshipGameSchema = new Schema({
     player1: { type: PlayerSchema, required: true },
     player2: { type: PlayerSchema, default: null },
     boardSize: { type: Number, default: 8 },
+    difficulty: { type: String, default: 'normal' },
+    fleet: { type: [Schema.Types.Mixed], default: [] },
     player1Shots: [ShotSchema],
     player2Shots: [ShotSchema],
     turn: { type: String, default: null },

@@ -8,6 +8,7 @@ const HangmanSchema = new Schema({
     category: { type: String, default: "Family Secret" },
     guessedLetters: [{ type: String }],
     wrongGuesses: { type: Number, default: 0 },
+    solo: { type: Boolean, default: false },
     maxAttempts: { type: Number, default: 6 },
     status: { type: String, enum: ['waiting', 'playing', 'won', 'lost'], default: 'waiting' }
 }, { timestamps: true });

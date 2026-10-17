@@ -22,6 +22,13 @@ const ChessGameSchema = new Schema({
         default: 'waiting'
     },
     winner: { type: String, default: null },
+    // Befejezés oka: checkmate | stalemate | threefold | insufficient | fifty | resign
+    endReason: { type: String, default: null },
+    // Utolsó lépés a kiemeléshez
+    lastMove: {
+        from: { type: String, default: null },
+        to: { type: String, default: null }
+    },
     creatorName: { type: String, required: true }
 }, { timestamps: true });
 

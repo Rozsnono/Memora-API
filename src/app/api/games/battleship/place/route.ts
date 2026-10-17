@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server';
 import connectDB from '@/lib/mongodb';
 import { BattleshipGame } from '@/models/BattleshipGame';
 import { pusherServer } from '@/lib/pusher';
+import { sanitizeGame, validateFleet, gameFleet, gameBoardSize } from '@/lib/battleship';
 import { corsResponse, handleOptions } from '@/lib/cors';
 
 export const dynamic = 'force-dynamic';
@@ -27,11 +28,20 @@ export async function PATCH(req: Request) {
             return corsResponse(NextResponse.json({ error: 'Player not part of game' }, { status: 403 }), req);
         }
 
+        if (game.status !== 'setup') {
+            return corsResponse(NextResponse.json({ error: 'Game already started' }, { status: 400 }), req);
+        }
+
+        const fleet = validateFleet(ships, gameBoardSize(game), gameFleet(game));
+        if ('error' in fleet) {
+            return corsResponse(NextResponse.json({ error: fleet.error }, { status: 400 }), req);
+        }
+
         if (isP1) {
-            game.player1.ships = ships;
+            game.player1.ships = fleet.ships;
             game.player1.ready = true;
         } else if (isP2) {
-            game.player2.ships = ships;
+            game.player2.ships = fleet.ships;
             game.player2.ready = true;
         }
 
@@ -55,7 +65,7 @@ export async function PATCH(req: Request) {
             console.error('Pusher trigger failed:', pusherErr);
         }
 
-        return corsResponse(NextResponse.json(game), req);
+        return corsResponse(NextResponse.json(sanitizeGame(game, userId)), req);
     } catch (e: any) {
         return corsResponse(NextResponse.json({ error: e.message }, { status: 500 }), req);
     }

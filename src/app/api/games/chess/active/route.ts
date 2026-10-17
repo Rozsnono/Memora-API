@@ -12,6 +12,7 @@ export async function GET(req: Request) {
         await connectDB();
         const { searchParams } = new URL(req.url);
         const spaceId = searchParams.get('spaceId');
+        if (!spaceId) return corsResponse(NextResponse.json({ error: 'Hiányzó spaceId.' }, { status: 400 }), req);
 
         // Find games in this space that are still "waiting" or "playing"
         const games = await ChessGame.find({
@@ -21,6 +22,7 @@ export async function GET(req: Request) {
 
         return corsResponse(NextResponse.json(games), req);
     } catch (e: any) {
-        return corsResponse(NextResponse.json({ error: e.message }), req);
+        console.error('Chess active hiba:', e);
+        return corsResponse(NextResponse.json({ error: 'Szerverhiba.' }, { status: 500 }), req);
     }
 }

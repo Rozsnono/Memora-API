@@ -19,8 +19,10 @@ function generateLobbyCode(): string {
 export async function GET(request: Request) {
     try {
         await dbConnect();
-        const openLobbies = await Lobby.find({ status: 'waiting' }).sort({ createdAt: -1 });
-        return corsResponse(NextResponse.json({ success: true, data: openLobbies }, { status: 200 }), request);
+        const openLobbies = await Lobby.find({ status: 'waiting' }).sort({ createdAt: -1 }).lean();
+        // A PIN soha nem hagyja el a szervert: csak azt jelezzük, hogy védett-e a szoba
+        const data = openLobbies.map(({ passcode, ...rest }: any) => ({ ...rest, hasPasscode: !!passcode }));
+        return corsResponse(NextResponse.json({ success: true, data }, { status: 200 }), request);
     } catch (error: any) {
         return corsResponse(NextResponse.json({ success: false, error: error.message }, { status: 500 }), request);
     }

@@ -17,7 +17,7 @@ export async function GET(
 
         // Resolve the asynchronous params object [4]
         const { code } = await context.params;
-        const saved = await SavedGame.findOne({ saveCode: code });
+        const saved = await SavedGame.findOne({ saveCode: code.trim().toUpperCase() });
 
         if (!saved) {
             return corsResponse(NextResponse.json({ success: false, error: 'A mentés nem található ezen a kódon.' }, { status: 404 }), request);

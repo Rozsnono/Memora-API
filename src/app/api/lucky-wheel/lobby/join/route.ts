@@ -41,11 +41,23 @@ export async function POST(request: Request) {
             return corsResponse(NextResponse.json({ success: false, error: 'Ez a név már foglalt ebben a szobában.' }, { status: 400 }), request);
         }
 
-        // Add player and save
-        lobby.players.push(playerName);
-        await lobby.save();
+        // Atomikus hozzáadás: párhuzamos csatlakozásnál sem lépjük túl a létszámot / nem duplázódik a név
+        const updated = await Lobby.findOneAndUpdate(
+            {
+                code: lobby.code,
+                status: 'waiting',
+                players: { $ne: playerName },
+                [`players.${lobby.maxPlayers - 1}`]: { $exists: false },
+            },
+            { $push: { players: playerName } },
+            { new: true }
+        );
+        if (!updated) {
+            return corsResponse(NextResponse.json({ success: false, error: 'A szoba időközben megtelt vagy elindult.' }, { status: 409 }), request);
+        }
 
-        return corsResponse(NextResponse.json({ success: true, data: lobby }, { status: 200 }), request);
+        const { passcode: _pin, ...safe } = updated.toObject();
+        return corsResponse(NextResponse.json({ success: true, data: { ...safe, hasPasscode: !!_pin } }, { status: 200 }), request);
     } catch (error: any) {
         return corsResponse(NextResponse.json({ success: false, error: error.message }, { status: 500 }), request);
     }

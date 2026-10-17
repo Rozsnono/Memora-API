@@ -22,6 +22,18 @@ export async function POST(request: Request) {
             return corsResponse(NextResponse.json({ success: false, error: 'A keresett szoba nem található.' }, { status: 404 }), request);
         }
 
+        // Játék közben a pontszám-tömbök és az aktív játékos indexe együtt mozog a players listával
+        const leaverIdx = lobby.players.indexOf(playerName);
+        if (leaverIdx !== -1 && lobby.status === 'active') {
+            const wasActive = lobby.activePlayerIdx === leaverIdx;
+            lobby.playerScores.splice(leaverIdx, 1);
+            lobby.playerTotalScores.splice(leaverIdx, 1);
+            if (leaverIdx < lobby.activePlayerIdx) lobby.activePlayerIdx -= 1;
+            const remaining = lobby.players.length - 1;
+            if (remaining > 0 && lobby.activePlayerIdx >= remaining) lobby.activePlayerIdx = 0;
+            if (wasActive) lobby.turnState = 'idle';
+        }
+
         // Filter out the player who requested to leave
         lobby.players = lobby.players.filter((p) => p !== playerName);
 

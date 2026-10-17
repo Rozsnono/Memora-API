@@ -4,67 +4,12 @@ import connectDB from '@/lib/mongodb';
 import { BattleshipGame } from '@/models/BattleshipGame';
 import { pusherServer } from '@/lib/pusher';
 import { corsResponse, handleOptions } from '@/lib/cors';
+import { sanitizeGame, resolveConfig, generateRandomFleet } from '@/lib/battleship';
 
 export const dynamic = 'force-dynamic';
 
 export async function OPTIONS(request: Request) {
     return handleOptions(request);
-}
-
-// Generate valid non-overlapping random ship placements on an 8x8 grid
-export function generateRandomFleet() {
-    const fleetDefs = [
-        { id: 'cruise', type: 'cruise', name: 'Grand Voyage', size: 4 },
-        { id: 'sailboat', type: 'sailboat', name: 'Sunset Sailboat', size: 3 },
-        { id: 'catamaran', type: 'catamaran', name: 'Adventure Catamaran', size: 2 },
-        { id: 'island', type: 'island', name: 'Beacon Island', size: 1 },
-    ];
-
-    const occupied = new Set<string>();
-    const ships: any[] = [];
-
-    for (const def of fleetDefs) {
-        let placed = false;
-        let attempts = 0;
-        while (!placed && attempts < 200) {
-            attempts++;
-            const horizontal = Math.random() > 0.5;
-            const maxR = horizontal ? 8 : 8 - def.size + 1;
-            const maxC = horizontal ? 8 - def.size + 1 : 8;
-            const startR = Math.floor(Math.random() * maxR);
-            const startC = Math.floor(Math.random() * maxC);
-
-            const positions: { r: number; c: number }[] = [];
-            let canPlace = true;
-
-            for (let i = 0; i < def.size; i++) {
-                const r = horizontal ? startR : startR + i;
-                const c = horizontal ? startC + i : startC;
-                // Leave 1 cell buffer or just no direct overlap
-                if (occupied.has(`${r},${c}`)) {
-                    canPlace = false;
-                    break;
-                }
-                positions.push({ r, c });
-            }
-
-            if (canPlace) {
-                positions.forEach(p => occupied.add(`${p.r},${p.c}`));
-                ships.push({
-                    id: def.id,
-                    type: def.type,
-                    name: def.name,
-                    size: def.size,
-                    positions,
-                    hits: 0,
-                    sunk: false,
-                });
-                placed = true;
-            }
-        }
-    }
-
-    return ships;
 }
 
 // GET: List active/waiting games
@@ -74,13 +19,14 @@ export async function GET(req: Request) {
         const { searchParams } = new URL(req.url);
         const spaceId = searchParams.get('spaceId');
         const gameId = searchParams.get('gameId');
+        const viewerId = searchParams.get('userId');
 
         if (gameId) {
             const game = await BattleshipGame.findById(gameId);
             if (!game) {
                 return corsResponse(NextResponse.json({ error: 'Game not found' }, { status: 404 }), req);
             }
-            return corsResponse(NextResponse.json(game), req);
+            return corsResponse(NextResponse.json(sanitizeGame(game, viewerId)), req);
         }
 
         const games = await BattleshipGame.find({
@@ -88,7 +34,7 @@ export async function GET(req: Request) {
             status: { $in: ['setup', 'playing'] },
         }).sort({ updatedAt: -1 });
 
-        return corsResponse(NextResponse.json(games), req);
+        return corsResponse(NextResponse.json(games.map((g: any) => sanitizeGame(g, viewerId))), req);
     } catch (e: any) {
         return corsResponse(NextResponse.json({ error: e.message }, { status: 500 }), req);
     }
@@ -99,7 +45,12 @@ export async function POST(req: Request) {
     headers();
     try {
         await connectDB();
-        const { spaceId, userId, userName, isAiMode } = await req.json();
+        const { spaceId, userId, userName, isAiMode, difficulty, boardSize, shipIds } = await req.json();
+
+        const config = resolveConfig({ difficulty, boardSize, shipIds });
+        if ('error' in config) {
+            return corsResponse(NextResponse.json({ error: config.error }, { status: 400 }), req);
+        }
 
         let player2 = null;
         if (isAiMode) {
@@ -107,7 +58,7 @@ export async function POST(req: Request) {
                 id: 'ai-bot',
                 name: 'A Széf Szelleme',
                 ready: true,
-                ships: generateRandomFleet(),
+                ships: generateRandomFleet(config.boardSize, config.fleet),
             };
         }
 
@@ -122,7 +73,9 @@ export async function POST(req: Request) {
                 ships: [],
             },
             player2,
-            boardSize: 8,
+            boardSize: config.boardSize,
+            difficulty: config.difficulty,
+            fleet: config.fleet,
             player1Shots: [],
             player2Shots: [],
             status: 'setup',
@@ -141,7 +94,7 @@ export async function POST(req: Request) {
             }
         }
 
-        return corsResponse(NextResponse.json(game), req);
+        return corsResponse(NextResponse.json(sanitizeGame(game, userId)), req);
     } catch (e: any) {
         return corsResponse(NextResponse.json({ error: e.message }, { status: 500 }), req);
     }
